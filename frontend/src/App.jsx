@@ -1,36 +1,37 @@
 import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
 import Sidebar from "./components/Sidebar";
-import Chat from "./pages/chat";
-import Group from "./pages/group";
-import Contact from "./pages/contact";
-import Community from "./pages/community";
-import Login from "./components/Login";
+import Chat from "./pages/Chat";
+import Group from "./pages/Group";
+import Contact from "./pages/Contact";
+import Login from "./pages/Login";
+import { ChatProvider } from "./context/ChatContext";
 
 function App() {
   return (
     <Router>
-      <Routes>
-        {/* Route untuk login */}
-        <Route path="/" element={<Login />} />
+      <ChatProvider>
+        <Routes>
+          {/* Route untuk login */}
+          <Route path="/" element={<Login />} />
 
-        {/* Route setelah login (dengan sidebar) */}
-        <Route
-          path="/*"
-          element={
-            <div className="flex h-screen">
-              <Sidebar />
-              <div className="flex-1">
-                <Routes>
-                  <Route path="chat" element={<Chat />} />
-                  <Route path="group" element={<Group />} />
-                  <Route path="contact" element={<Contact />} />
-                  <Route path="community" element={<Community />} />
-                </Routes>
+          {/* Route after login */}
+          <Route
+            path="/*"
+            element={
+              <div className="flex h-screen">
+                <Sidebar />
+                <div className="flex-1">
+                  <Routes>
+                    <Route path="chat" element={<Chat />} />
+                    <Route path="group" element={<Group />} />
+                    <Route path="contact" element={<Contact />} />
+                  </Routes>
+                </div>
               </div>
-            </div>
-          }
-        />
-      </Routes>
+            }
+          />
+        </Routes>
+      </ChatProvider>
     </Router>
   );
 }

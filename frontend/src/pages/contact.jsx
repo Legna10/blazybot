@@ -1,131 +1,240 @@
-import React, { useState } from "react";
+// src/components/Contact.jsx
+import React, { useState, useEffect } from "react";
+import { useChat } from "../context/ChatContext";
 
 const Contact = () => {
-  const [contacts, setContacts] = useState([
-    { id: 1, name: "Angela", phone: "08123456789" },
-  ]);
+  const { messages, setMessages } = useChat();
+  const [contacts, setContacts] = useState([]);
+  const [groups, setGroups] = useState([]);
   const [selectedContact, setSelectedContact] = useState(null);
-  const [newContact, setNewContact] = useState({ name: "", phone: "" });
+  const [newContact, setNewContact] = useState({ name: "", phone: "", groupIds: [] });
   const [editing, setEditing] = useState(null);
-  const [messages, setMessages] = useState({
-    Angela: [
-    ],
-  });
+  const [showForm, setShowForm] = useState(false);
+  const [searchTerm, setSearchTerm] = useState("");
   const [newMessage, setNewMessage] = useState("");
 
-  // tambah / edit contact
-  const handleAddOrEdit = () => {
+  // Fetch contacts & groups dari backend
+  useEffect(() => {
+    fetch("http://localhost:5000/api/contacts")
+      .then((res) => res.json())
+      .then((data) => setContacts(data))
+      .catch((err) => console.error("Failed to fetch contacts:", err));
+
+    fetch("http://localhost:5000/api/groups")
+      .then((res) => res.json())
+      .then((data) => setGroups(data))
+      .catch((err) => console.error("Failed to fetch groups:", err));
+  }, []);
+
+  const handleAddOrEdit = async () => {
     if (!newContact.name || !newContact.phone) return;
 
-    if (editing !== null) {
-      setContacts(
-        contacts.map((c) =>
-          c.id === editing ? { ...c, ...newContact } : c
-        )
-      );
-      setEditing(null);
-    } else {
-      setContacts([
-        ...contacts,
-        { id: Date.now(), name: newContact.name, phone: newContact.phone },
-      ]);
+    try {
+      if (editing) {
+        await fetch(`http://localhost:5000/api/contacts/${editing}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(newContact),
+        });
+        setEditing(null);
+      } else {
+        await fetch("http://localhost:5000/api/contacts", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(newContact),
+        });
+      }
+
+      const resContacts = await fetch("http://localhost:5000/api/contacts");
+      setContacts(await resContacts.json());
+
+      const resGroups = await fetch("http://localhost:5000/api/groups");
+      setGroups(await resGroups.json());
+
+      setNewContact({ name: "", phone: "", groupIds: [] });
+      setShowForm(false);
+    } catch (err) {
+      console.error("Error saving contact:", err);
     }
-    setNewContact({ name: "", phone: "" });
   };
 
   const handleEdit = (contact) => {
     setEditing(contact.id);
-    setNewContact({ name: contact.name, phone: contact.phone });
+    setNewContact({
+      name: contact.name,
+      phone: contact.phone,
+      groupIds: contact.groupIds || [],
+    });
+    setShowForm(true);
   };
 
-  const handleDelete = (id) => {
-    const contact = contacts.find((c) => c.id === id);
-    setContacts(contacts.filter((c) => c.id !== id));
-    if (selectedContact?.id === id) setSelectedContact(null);
+  const handleDelete = async (id) => {
+    try {
+      await fetch(`http://localhost:5000/api/contacts/${id}`, { method: "DELETE" });
+      setContacts((prev) => prev.filter((c) => c.id !== id));
+      if (selectedContact?.id === id) setSelectedContact(null);
 
-    // hapus juga chat-nya
-    if (messages[contact.name]) {
-      const newMessages = { ...messages };
-      delete newMessages[contact.name];
-      setMessages(newMessages);
+      // hapus juga chat history contact ini dari context
+      setMessages((prev) => {
+        const copy = { ...prev };
+        delete copy[String(id)];
+        return copy;
+      });
+    } catch (err) {
+      console.error("Error deleting contact:", err);
     }
   };
 
-  // pilih kontak
   const handleSelect = (contact) => {
     setSelectedContact(contact);
-    if (!messages[contact.name]) {
-      setMessages({ ...messages, [contact.name]: [] });
+
+    // Initialize messages key jika belum ada
+    const key = String(contact.id);
+    if (!messages[key]) {
+      setMessages((prev) => ({ ...prev, [key]: [] }));
     }
   };
 
-  // kirim pesan
-  const handleSendMessage = () => {
+  const handleSendMessage = async () => {
     if (!newMessage.trim() || !selectedContact) return;
-    setMessages((prev) => ({
+
+    const key = String(selectedContact.id);
+
+    // Simpan lokal
+    setMessages(prev => ({
       ...prev,
-      [selectedContact.name]: [
-        ...prev[selectedContact.name],
-        { sender: "You", text: newMessage },
-      ],
+      [key]: [...(prev[key] || []), { sender: "You", text: newMessage }]
     }));
+
+    // Kirim ke backend untuk log
+    try {
+      await fetch(`http://localhost:5000/api/messages/${selectedContact.id}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sender: "You", text: newMessage })
+      });
+    } catch (err) {
+      console.error("Failed to send message:", err);
+    }
+
     setNewMessage("");
   };
 
+  const handleGroupChange = (groupId) => {
+    setNewContact((prev) => {
+      const ids = prev.groupIds.includes(groupId)
+        ? prev.groupIds.filter((id) => id !== groupId)
+        : [...prev.groupIds, groupId];
+      return { ...prev, groupIds: ids };
+    });
+  };
+
+  const filteredContacts = contacts.filter(
+    (c) =>
+      c.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      c.phone.includes(searchTerm)
+  );
+
   return (
     <div className="flex h-screen">
-      {/* Sidebar kiri - daftar kontak */}
-      <div className="w-64 bg-gray-100 border-r p-4 overflow-y-auto">
+      {/* Sidebar kiri */}
+      <div className="w-80 bg-gray-100 border-r p-4 overflow-y-auto">
         <h2 className="text-xl font-bold mb-4">Contacts</h2>
+        <input
+          type="text"
+          placeholder="Search by name or phone number"
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+          className="border rounded p-2 mb-2 w-full"
+        />
 
-        {/* Form add/edit */}
-        <div className="flex flex-col gap-2 mb-4">
-          <input
-            type="text"
-            placeholder="Name"
-            value={newContact.name}
-            onChange={(e) =>
-              setNewContact({ ...newContact, name: e.target.value })
-            }
-            className="border rounded p-2"
-          />
-          <input
-            type="text"
-            placeholder="Phone"
-            value={newContact.phone}
-            onChange={(e) =>
-              setNewContact({ ...newContact, phone: e.target.value })
-            }
-            className="border rounded p-2"
-          />
+        {!showForm && (
           <button
-            onClick={handleAddOrEdit}
-            className="bg-green-500 text-white px-4 py-2 rounded"
+            onClick={() => {
+              setShowForm(true);
+              setEditing(null);
+              setNewContact({ name: "", phone: "", groupIds: [] });
+            }}
+            className="bg-green-500 text-white px-4 py-2 rounded mb-4 w-full"
           >
-            {editing ? "Save" : "Add"}
+            Add Contact
           </button>
-        </div>
+        )}
 
-        {/* List kontak */}
+        {showForm && (
+          <div className="flex flex-col gap-2 mb-4 p-4 rounded shadow">
+            <input
+              type="text"
+              placeholder="Name"
+              value={newContact.name}
+              onChange={(e) => setNewContact({ ...newContact, name: e.target.value })}
+              className="border rounded p-2"
+            />
+            <input
+              type="text"
+              placeholder="Phone (628...)"
+              value={newContact.phone}
+              onChange={(e) => setNewContact({ ...newContact, phone: e.target.value })}
+              className="border rounded p-2"
+            />
+
+            <div className="flex flex-col gap-1 max-h-40 overflow-y-auto">
+              <span className="font-semibold">Assign to groups:</span>
+              {groups.map((g) => (
+                <label key={g.id} className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={newContact.groupIds.includes(g.id)}
+                    onChange={() => handleGroupChange(g.id)}
+                  />
+                  {g.name}
+                </label>
+              ))}
+            </div>
+
+            <div className="flex gap-2 mt-2">
+              <button
+                onClick={handleAddOrEdit}
+                className="bg-green-500 text-white px-4 py-2 rounded flex-1"
+              >
+                {editing ? "Save" : "Add"}
+              </button>
+              <button
+                onClick={() => setShowForm(false)}
+                className="bg-gray-300 px-4 py-2 rounded flex-1"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
+
         <ul className="space-y-2">
-          {contacts.map((c) => (
+          {filteredContacts.map((c) => (
             <li
               key={c.id}
               onClick={() => handleSelect(c)}
               className={`p-2 rounded cursor-pointer flex justify-between items-center ${
-                selectedContact?.id === c.id
-                  ? "bg-primary text-zinc-500"
-                  : "hover:bg-gray-200"
+                selectedContact?.id === c.id ? "bg-green-200" : "hover:bg-gray-200"
               }`}
             >
-              <span>{c.name}</span>
+              <div>
+                <div className="font-semibold">{c.name}</div>
+                <div className="text-sm text-gray-600">
+                  {c.phone} | Groups:{" "}
+                  {c.groupIds
+                    .map((gid) => groups.find((g) => g.id === gid)?.name)
+                    .filter(Boolean)
+                    .join(", ") || "None"}
+                </div>
+              </div>
               <div className="flex gap-1">
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
                     handleEdit(c);
                   }}
-                  className="text-blue-500 text-sm"
+                  className="text-green-500 text-sm"
                 >
                   Edit
                 </button>
@@ -144,26 +253,20 @@ const Contact = () => {
         </ul>
       </div>
 
-      {/* Chat area kanan */}
+      {/* Chat area */}
       <div className="flex-1 flex flex-col">
         {selectedContact ? (
           <>
-            {/* Header */}
             <div className="p-4 border-b bg-white font-bold">
               {selectedContact.name} ({selectedContact.phone})
             </div>
-
-            {/* Messages */}
             <div className="flex-1 p-4 overflow-y-auto bg-gray-50">
-              {messages[selectedContact.name]?.map((msg, i) => (
+              {messages[String(selectedContact.id)]?.map((msg, i) => (
                 <div key={i} className="mb-2">
-                  <span className="font-semibold">{msg.sender}:</span>{" "}
-                  <span>{msg.text}</span>
+                  <span className="font-semibold">{msg.sender}:</span> {msg.text}
                 </div>
               ))}
             </div>
-
-            {/* Input pesan */}
             <div className="p-4 border-t flex gap-2 bg-white">
               <input
                 type="text"
@@ -174,7 +277,7 @@ const Contact = () => {
               />
               <button
                 onClick={handleSendMessage}
-                className="bg-primary text-white px-4 py-2 rounded"
+                className="bg-green-500 text-white px-4 py-2 rounded"
               >
                 Send
               </button>

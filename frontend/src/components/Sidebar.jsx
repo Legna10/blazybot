@@ -18,10 +18,6 @@ export default function Sidebar() {
       <Link to="/group" className="mb-6">
         <img src={group} alt="group" className="w-6 h-6" />
       </Link>
-
-      <Link to="/community">
-        <img src={community} alt="community" className="w-6 h-6" />
-      </Link>
     </div>
   );
 }

@@ -2,7 +2,7 @@
 export default {
   content: [
     "./index.html",
-    "./src/**/*.{js,ts,jsx,tsx}", // scan semua file di folder src
+    "./src/**/*.{js,ts,jsx,tsx}", 
   ],
   theme: {
     extend: {
