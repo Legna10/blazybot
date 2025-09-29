@@ -1,14 +1,11 @@
 const express = require("express");
 const router = express.Router();
-const ctrl = require("../controllers/groupController");
+const groupController = require("../controllers/groupController");
 
-router.get("/", ctrl.getGroups);
-router.post("/", ctrl.createGroup);
-router.put("/:id", ctrl.updateGroup);
-router.delete("/:id", ctrl.deleteGroup);
-
-// assign / remove contact from group
-router.post("/:groupId/contacts", ctrl.addContactToGroup);
-router.delete("/:groupId/contacts/:contactId", ctrl.removeContactFromGroup);
+// CRUD groups
+router.get("/", groupController.getGroups); //Read, fetch all groups
+router.post("/", groupController.createGroup); //Create, create new group
+router.put("/:id", groupController.updateGroup); //Update, update existing group by id
+router.delete("/:id", groupController.deleteGroup); //Delete, delete existing group by id
 
 module.exports = router;

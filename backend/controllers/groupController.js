@@ -1,72 +1,47 @@
 const groupModel = require("../models/groupModel");
 
+//function to get all groups
 async function getGroups(req, res) {
   try {
-    const data = await groupModel.getAll();
-    res.json(data);
+    const groups = await groupModel.getAll(); //fetch data from the model
+    res.json(groups); //return as json
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    res.status(500).json({ error: e.message }); //error handling
   }
 }
 
+//function to create new group
 async function createGroup(req, res) {
   try {
-    const { name } = req.body;
-    const data = await groupModel.create({ name });
-    res.json(data);
+    const { name, contactIds = [] } = req.body; //get data from request body
+    const group = await groupModel.create({ name, contactIds }); //create using model
+    res.json(group); //returnas json
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    res.status(500).json({ error: e.message }); //error handling
   }
 }
 
+//function to update existing group by id
 async function updateGroup(req, res) {
   try {
-    const id = req.params.id;
-    const { name } = req.body;
-    const data = await groupModel.update(id, { name });
-    res.json(data);
+    const id = req.params.id; //get id from request params
+    const { name, contactIds = [] } = req.body; //get data from request body
+    const group = await groupModel.update(id, { name, contactIds }); //update using model
+    res.json(group); //return as json
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    res.status(500).json({ error: e.message }); //error handling
   }
 }
 
+//function to delete existing group by id
 async function deleteGroup(req, res) {
   try {
-    const id = req.params.id;
-    await groupModel.remove(id);
-    res.json({ success: true });
+    const id = req.params.id; //get id from request params
+    await groupModel.remove(id); //delete using model
+    res.json({ success: true }); //send success response
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    res.status(500).json({ error: e.message }); //error handling
   }
 }
 
-// Assign / Remove contact from group
-async function addContactToGroup(req, res) {
-  try {
-    const groupId = req.params.groupId;
-    const { contactId } = req.body;
-    await groupModel.addContact(groupId, contactId);
-
-    const contacts = await groupModel.getAll(); // or fetch all contacts separately if needed
-    const groups = await groupModel.getAll();
-    res.json({ contacts, groups });
-  } catch (e) {
-    res.status(500).json({ error: e.message });
-  }
-}
-
-async function removeContactFromGroup(req, res) {
-  try {
-    const groupId = req.params.groupId;
-    const contactId = req.params.contactId;
-    await groupModel.removeContactFromGroup(groupId, contactId);
-
-    const contacts = await groupModel.getAll(); // or fetch all contacts separately if needed
-    const groups = await groupModel.getAll();
-    res.json({ contacts, groups });
-  } catch (e) {
-    res.status(500).json({ error: e.message });
-  }
-}
-
-module.exports = { getGroups, createGroup, updateGroup, deleteGroup, addContactToGroup, removeContactFromGroup };
+module.exports = { getGroups, createGroup, updateGroup, deleteGroup }; 

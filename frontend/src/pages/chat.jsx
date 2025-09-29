@@ -1,78 +1,40 @@
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
+import ChatWindow from "../components/ChatWindow"; 
 import { useChat } from "../context/ChatContext";
+import { useData } from "../context/DataContext";
 
 const Chat = () => {
-  const { messages, setMessages, sendBulkToTargets, makeKey } = useChat();
-  const [contacts, setContacts] = useState([]);
-  const [groups, setGroups] = useState([]);
+  const { makeKey } = useChat();
+  const { contacts, groups } = useData(); //ambil dari DataContext, ga perlu fetch ulang
   const [selected, setSelected] = useState(null); // { type: "all" | "contact" | "group", data }
+  const [searchTerm, setSearchTerm] = useState("");
 
-  const [newMessage, setNewMessage] = useState("");
+  const filteredContacts = contacts.filter(
+    (c) =>
+      c.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      c.phone.includes(searchTerm)
+  );
 
-  // Fetch contacts & groups
-  useEffect(() => {
-    const fetchData = async () => {
-      try {
-        const resContacts = await fetch("http://localhost:5000/api/contacts");
-        setContacts(await resContacts.json());
-
-        const resGroups = await fetch("http://localhost:5000/api/groups");
-        setGroups(await resGroups.json());
-      } catch (err) {
-        console.error(err);
-      }
-    };
-    fetchData();
-  }, []);
-
-  const handleSendMessage = async () => {
-    if (!newMessage.trim() || !selected) return;
-
-    if (selected.type === "all") {
-      // blast ke semua kontak
-      const targets = contacts.map((c) => c.phone);
-
-      await fetch("http://localhost:5000/api/blast", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ targets, message: newMessage }),
-      });
-
-      // update context
-      setMessages(prev => ({
-        ...prev,
-        all: [{ sender: "Bot", text: newMessage, ts: Date.now() }]
-      }));
-
-    } else if (selected.type === "contact") {
-      const key = makeKey("contact", selected.data.id);
-      setMessages((prev) => ({
-        ...prev,
-        [key]: [...(prev[key] || []), { sender: "You", text: newMessage }],
-      }));
-    } else if (selected.type === "group") {
-      // kirim ke semua member group
-      const groupContacts = contacts.filter((c) =>
-        c.groupIds?.includes(selected.data.id)
-      );
-      groupContacts.forEach((c) => {
-        const key = makeKey("contact", c.id);
-        setMessages((prev) => ({
-          ...prev,
-          [key]: [...(prev[key] || []), { sender: "You", text: newMessage }],
-        }));
-      });
-    }
-
-    setNewMessage("");
-  };
+  const filteredGroups = groups.filter((g) =>
+    g.name.toLowerCase().includes(searchTerm.toLowerCase())
+  );
 
   return (
     <div className="flex h-screen">
       {/* Sidebar */}
       <div className="w-80 bg-gray-100 border-r p-4 overflow-y-auto">
-        <h2 className="text-xl font-bold mb-4">Chat Targets</h2>
+        <h2 className="text-xl font-bold mb-4">Chat</h2>
 
+        {/* Search bar */}
+        <input
+          type="text"
+          placeholder="Search contacts or groups..."
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+          className="border focus:outline-green-500 rounded p-2 w-full mb-4"
+        />
+        
+        {/* Broadcast ke semua */}
         <div
           onClick={() => setSelected({ type: "all", data: null })}
           className={`p-2 rounded cursor-pointer mb-2 ${
@@ -82,9 +44,10 @@ const Chat = () => {
           All Contacts ({contacts.length})
         </div>
 
+        {/* Groups */}
         <h3 className="font-semibold mt-4">Groups</h3>
-        <ul className="space-y-2">
-          {groups.map((g) => (
+       <ul className="space-y-1">
+          {filteredGroups.map((g) => (
             <li
               key={g.id}
               onClick={() => setSelected({ type: "group", data: g })}
@@ -98,10 +61,11 @@ const Chat = () => {
             </li>
           ))}
         </ul>
-
+        
+        {/* Contacts */}
         <h3 className="font-semibold mt-4">Contacts</h3>
-        <ul className="space-y-2">
-          {contacts.map((c) => (
+        <ul className="space-y-1">
+          {filteredContacts.map((c) => (
             <li
               key={c.id}
               onClick={() => setSelected({ type: "contact", data: c })}
@@ -120,59 +84,11 @@ const Chat = () => {
       {/* Chat Window */}
       <div className="flex-1 flex flex-col">
         {selected ? (
-          <>
-            <div className="p-4 border-b bg-white font-bold">
-              {selected.type === "all"
-                ? `All Contacts (${contacts.length})`
-                : selected.type === "group"
-                ? `Group: ${selected.data.name}`
-                : `${selected.data.name} (${selected.data.phone})`}
-            </div>
-
-            <div className="flex-1 p-4 overflow-y-auto bg-gray-50">
-              {selected.type === "all" ? (
-                <div className="mb-2">
-                  <span className="font-semibold">Bot:</span>{" "}
-                  {messages["all"]?.[0]?.text || "Type your message below..."}
-                </div>
-              ) 
-                : selected.type === "group"
-                ? contacts
-                    .filter((c) => c.groupIds?.includes(selected.data.id))
-                    .map((c) => {
-                      const key = makeKey("contact", c.id);
-                      return (
-                        <div key={c.id} className="mb-2">
-                          <span className="font-semibold">{c.name}:</span>{" "}
-                          {messages[key]?.map((m, i) => (
-                            <span key={i}> {m.text} </span>
-                          ))}
-                        </div>
-                      );
-                    })
-                : messages[makeKey("contact", selected.data.id)]?.map((m, i) => (
-                    <div key={i} className="mb-2">
-                      <span className="font-semibold">{m.sender}:</span> {m.text}
-                    </div>
-                  ))}
-            </div>
-
-            <div className="p-4 border-t flex gap-2 bg-white">
-              <input
-                type="text"
-                value={newMessage}
-                onChange={(e) => setNewMessage(e.target.value)}
-                placeholder="Type a message..."
-                className="flex-1 border rounded p-2"
-              />
-              <button
-                onClick={handleSendMessage}
-                className="bg-green-500 text-white px-4 py-2 rounded"
-              >
-                Send
-              </button>
-            </div>
-          </>
+          <ChatWindow
+            type={selected.type}
+            target={selected.data}
+            allContacts={contacts}
+          />
         ) : (
           <div className="flex-1 flex items-center justify-center text-gray-500">
             Select a contact or group to start chatting

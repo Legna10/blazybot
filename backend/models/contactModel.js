@@ -1,73 +1,71 @@
 const { readSheet, appendRow, updateRow, clearRow } = require("../services/sheetClient");
-const groupModel = require("./groupModel");
-const { v4: uuidv4 } = require("uuid"); // import uuid
+const { v4: uuidv4 } = require("uuid");
+const contactGroupModel = require("./contact_groupModel");
 
-// Ambil semua contact
+//function to get all contacts with their group IDs
 async function getAll() {
-  const rows = await readSheet("contacts");
-  return rows.map(r => ({
-    id: String(r.id),
-    name: r.name,
-    phone: r.phone,
-    groupIds: r.groupIds ? r.groupIds.split(",").filter(Boolean) : [],
-    _row: r._row
-  }));
+  const rows = await readSheet("contact");
+  const contacts = rows.map(r => ({ id: String(r.id), name: r.name, phone: r.phone, _row: r._row }));
+
+  // attach groupIds
+  const relations = await contactGroupModel.getAll();
+  return contacts.map(c => {
+    c.groupIds = relations.filter(r => r.contact_id === c.id).map(r => r.group_id);
+    return c;
+  });
 }
 
-// Buat contact baru
-async function create({ name, phone, groupIds = [] }) {
-  const id = uuidv4(); // generate UUID unik
-  const groupStr = Array.isArray(groupIds) ? groupIds.join(",") : "";
-  const _row = await appendRow("contacts", [id, name, phone, groupStr]);
+//function to create new contact with optional group IDs
+async function create({ name, phone, group_ids = [] }) {
+  const id = uuidv4(); //generate unique id, duplicates are unlikely
+  const _row = await appendRow("contact", [id, name, phone]); //append to sheet
 
-  // Sync ke group
-  for (const gid of groupIds) {
-    await groupModel.addContactToGroup(gid, id);
+  // Add contact to groups
+  for (const group_id of group_ids) {
+    await contactGroupModel.add(id, group_id);
   }
 
-  return { id, name, phone, groupIds, _row };
+  return { id, name, phone, _row, groupIds: group_ids }; 
 }
 
-// Update contact
-async function update(id, { name, phone, groupIds = [] }) {
-  const rows = await readSheet("contacts");
+//function to update existing contact and sync group relations by id
+async function update(id, { name, phone, group_ids = [] }) {
+  const rows = await readSheet("contact");
   const found = rows.find(r => String(r.id) === String(id));
   if (!found) throw new Error("Contact not found");
 
-  const groupStr = Array.isArray(groupIds) ? groupIds.join(",") : "";
-  await updateRow("contacts", found._row, [id, name, phone, groupStr]);
+  await updateRow("contact", found._row, [id, name, phone]);
 
-  // Hapus dulu dari semua group
-  const allGroups = await groupModel.getAll();
-  for (const g of allGroups) {
-    if (g.contactIds.includes(id)) {
-      await groupModel.removeContactFromGroup(g.id, id);
-    }
+  // Sync group relations
+  const relations = await contactGroupModel.getAll();
+  const currentGroupIds = relations.filter(r => r.contact_id === id).map(r => r.group_id);
+
+  // Remove from old groups
+  for (const oldId of currentGroupIds.filter(gid => !group_ids.includes(gid))) {
+    await contactGroupModel.remove(id, oldId);
   }
 
-  // Tambahkan ke group baru
-  for (const gid of groupIds) {
-    await groupModel.addContactToGroup(gid, id);
+  // Add to new groups
+  for (const newId of group_ids.filter(gid => !currentGroupIds.includes(gid))) {
+    await contactGroupModel.add(id, newId);
   }
 
-  return { id, name, phone, groupIds, _row: found._row };
+  return { id, name, phone, _row: found._row, groupIds: group_ids };
 }
 
-// Hapus contact
+//function to delete existing contact and its group relations by id
 async function remove(id) {
-  const rows = await readSheet("contacts");
+  const rows = await readSheet("contact");
   const found = rows.find(r => String(r.id) === String(id));
   if (!found) throw new Error("Contact not found");
 
-  // Hapus dari semua group
-  const allGroups = await groupModel.getAll();
-  for (const g of allGroups) {
-    if (g.contactIds.includes(id)) {
-      await groupModel.removeContactFromGroup(g.id, id);
-    }
+  // Remove all group relations
+  const relations = await contactGroupModel.getAll();
+  for (const r of relations.filter(r => r.contact_id === id)) {
+    await contactGroupModel.remove(r.contact_id, r.group_id);
   }
 
-  await clearRow("contacts", found._row);
+  await clearRow("contact", found._row);
   return true;
 }
 
