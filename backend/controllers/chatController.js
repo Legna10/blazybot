@@ -1,6 +1,7 @@
 const { MessageMedia } = require("whatsapp-web.js");
 const contactModel = require("../models/contactModel");
 const groupModel = require("../models/groupModel");
+const { sendBarChart } = require("../services/whatsappChart");
 
 //function to send text message
 async function sendText(req, res) {
@@ -102,4 +103,54 @@ async function sendMedia(req, res) {
     res.status(500).json({ error: e.message });
   }
 }
-module.exports = { sendText, sendMedia };
+async function sendChart(req, res) {
+  const client = req.app.get("getClient")();
+  if (!client || client.info === undefined || !client.pupPage) {
+    return res.status(400).json({ error: "WhatsApp client not ready" });
+  }
+  
+  const { type, targetId, preset, title, labels, values } = req.body;
+
+  if (!type || (type !== "all" && !targetId)) {
+    return res.status(400).json({ error: "Missing type or targetId" });
+  }
+
+  try {
+    // Ambil daftar target nomor WA (recycle dari sendMedia)
+    const contactModel = require("../models/contactModel");
+    const groupModel = require("../models/groupModel");
+
+    let numbers = [];
+    if (type === "contact") {
+      const contact = (await contactModel.getAll()).find((c) => c.id === targetId);
+      if (contact) numbers.push(contact.phone + "@c.us");
+    } else if (type === "group") {
+      const group = (await groupModel.getAll()).find((g) => g.id === targetId);
+      if (group) {
+        const contacts = await contactModel.getAll();
+        numbers = contacts
+          .filter((c) => group.contactIds.includes(c.id))
+          .map((c) => c.phone + "@c.us");
+      }
+    } else if (type === "all") {
+      const contacts = await contactModel.getAll();
+      numbers = contacts.map((c) => c.phone + "@c.us");
+    }
+
+    if (numbers.length === 0) return res.status(404).json({ error: "No valid target numbers" });
+
+    // Buat payload chart
+    const chartPayload = { preset, title, labels, values };
+
+    for (const number of numbers) {
+      await sendBarChart(client, number, chartPayload);
+    }
+
+    res.json({ success: true, sent: numbers.length });
+  } catch (err) {
+    console.error("[sendChart] Error:", err);
+    res.status(500).json({ error: err.message });
+  }
+}
+
+module.exports = { sendText, sendMedia, sendChart };

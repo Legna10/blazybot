@@ -98,6 +98,16 @@ export async function sendMedia(payload) {
   ).json();
 }
 
+export async function sendChart(payload) {
+  return (
+    await fetch(`${BASE}/chat/send-chart`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    })
+  ).json();
+}
+
 //Auth APIs
 export async function login(payload) {
   return (

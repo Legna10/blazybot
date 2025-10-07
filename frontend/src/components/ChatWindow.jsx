@@ -1,24 +1,23 @@
 import React, { useEffect, useRef, useState } from "react";
 import { useChat } from "../context/ChatContext";
 import { io } from "socket.io-client";
-import mediaIcon from "../assets/icons/image.svg";
-import { sendText, sendMedia } from "../services/api";
+import attachIcon from "../assets/icons/attach_file.svg";
+import imageIcon from "../assets/icons/image.svg";
+import chartIcon from "../assets/icons/chart.svg";
 import sendIcon from "../assets/icons/send.svg";
+import { sendText, sendMedia, sendChart } from "../services/api";
 
 const socket = io("http://localhost:5000");
 
 const formatSmartTime = (isoString) => {
   if (!isoString) return "";
-  const date = new Date(isoString),
-    now = new Date();
+  const date = new Date(isoString);
+  const now = new Date();
   const isToday = date.toDateString() === now.toDateString();
   const yesterday = new Date();
   yesterday.setDate(now.getDate() - 1);
   const isYesterday = date.toDateString() === yesterday.toDateString();
-  const timePart = date.toLocaleTimeString([], {
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+  const timePart = date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
   if (isToday) return timePart;
   if (isYesterday) return `Yesterday, ${timePart}`;
   return `${date.getDate().toString().padStart(2, "0")}/${(
@@ -34,8 +33,9 @@ const ChatWindow = ({ type, target, allContacts }) => {
   const [previewFile, setPreviewFile] = useState(null);
   const [previewURL, setPreviewURL] = useState(null);
   const [previewCaption, setPreviewCaption] = useState("");
-  const chatContainerRef = useRef(null);
+  const [showAttachMenu, setShowAttachMenu] = useState(false);
 
+  const chatContainerRef = useRef(null);
   const key = type === "all" ? "all" : makeKey(type, target?.id);
   const msgs = getMessages(key);
 
@@ -61,7 +61,7 @@ const ChatWindow = ({ type, target, allContacts }) => {
     return () => socket.off("receive_message");
   }, []);
 
- const handleSend = async () => {
+  const handleSend = async () => {
     if (!text.trim()) return;
     const msgTime = new Date().toISOString();
 
@@ -75,7 +75,6 @@ const ChatWindow = ({ type, target, allContacts }) => {
     try {
       const res = await sendText(payload);
       if (!res.success) throw new Error(res.error);
-
       setMessages(key, { sender: "me", text, time: msgTime });
       setText("");
     } catch (err) {
@@ -89,17 +88,16 @@ const ChatWindow = ({ type, target, allContacts }) => {
     if (!file) return;
     setPreviewFile(file);
     setPreviewURL(URL.createObjectURL(file));
-    setPreviewCaption(""); // reset caption
+    setPreviewCaption("");
+    setShowAttachMenu(false);
   };
 
   // STEP 2: confirm kirim media
   const handleConfirmSendMedia = async () => {
     if (!previewFile) return;
-
     const reader = new FileReader();
     reader.onload = async (e) => {
-      const base64Data = e.target.result.split(",")[1]; // ambil base64
-
+      const base64Data = e.target.result.split(",")[1];
       const payload = {
         type,
         targetId: type === "all" ? undefined : target?.id,
@@ -108,22 +106,17 @@ const ChatWindow = ({ type, target, allContacts }) => {
         mimetype: previewFile.type,
         data: base64Data,
       };
-
       try {
-        const data = await sendMedia(payload); // kirim ke server
+        const data = await sendMedia(payload);
         if (!data.success) throw new Error(data.error);
-
-        // **buat base64 URL untuk preview**
         const base64URL = `data:${previewFile.type};base64,${base64Data}`;
-
         setMessages(key, {
           sender: "me",
           text: previewCaption || "",
-          mediaURL: base64URL, // pakai base64URL, bukan data server
+          mediaURL: base64URL,
           filename: previewFile.name,
           time: new Date().toISOString(),
         });
-
         setPreviewFile(null);
         setPreviewURL(null);
         setPreviewCaption("");
@@ -134,6 +127,32 @@ const ChatWindow = ({ type, target, allContacts }) => {
     reader.readAsDataURL(previewFile);
   };
 
+  const handleSendChart = async () => {
+    setShowAttachMenu(false);
+
+    try {
+      //contoh: kirim chart preset "sales"
+      const payload = {
+        type,
+        targetId: type === "all" ? undefined : target?.id,
+        preset: "sales", //bisa juga 'ticket', 'top', atau 'weekly'
+      };
+
+      const res = await sendChart(payload);
+      if (!res.success) throw new Error(res.error);
+
+      // tampilkan pesan dummy di chat frontend
+      setMessages(key, {
+        sender: "me",
+        text: "📊 Sent chart: Monthly Sales",
+        time: new Date().toISOString(),
+      });
+    } catch (err) {
+      console.error("Failed to send chart:", err);
+      alert("Failed to send chart: " + err.message);
+    }
+  };
+
   if (type !== "all" && !target)
     return (
       <div className="flex-1 flex items-center justify-center text-gray-500">
@@ -142,7 +161,7 @@ const ChatWindow = ({ type, target, allContacts }) => {
     );
 
   return (
-    <div className="flex flex-col flex-1">
+    <div className="flex flex-col flex-1 relative">
       <div className="p-3 border-b bg-white font-bold">
         {type === "all"
           ? `All Contacts (${allContacts.length})`
@@ -201,19 +220,35 @@ const ChatWindow = ({ type, target, allContacts }) => {
         })}
       </div>
 
-      <div className="p-2 border-t flex gap-2 bg-white">
-        <input
-          type="file"
-          id="fileInput"
-          style={{ display: "none" }}
-          onChange={handleSelectMedia}
-        />
-        <img
-          src={mediaIcon}
-          alt="media"
-          className="cursor-pointer active:scale-90 active:brightness-75 transition-all duration-100"
-          onClick={() => document.getElementById("fileInput").click()}
-        />
+      {/* Input area */}
+      <div className="p-2 border-t flex gap-2 bg-white items-center relative">
+        <input type="file" id="fileInput" style={{ display: "none" }} onChange={handleSelectMedia} />
+
+        {/* Attach button */}
+        <div className="relative">
+          <img
+            src={attachIcon}
+            alt="attach"
+            className="w-6 h-6 cursor-pointer active:scale-90 active:brightness-75 transition-all duration-100"
+            onClick={() => setShowAttachMenu((prev) => !prev)}
+          />
+          {showAttachMenu && (
+            <div className="absolute bottom-9 left-0 flex flex-col bg-white shadow-md rounded-lg min-w-max p-1">
+              <button
+                className="flex items-center gap-2 px-3 py-2 hover:bg-gray-100 text-sm"
+                onClick={() => document.getElementById("fileInput").click()}
+              >
+                <img src={imageIcon} alt="Image" className="w-5 h-5" /> Photos/Files
+              </button>
+              <button
+                className="flex items-center gap-2 px-3 py-2 hover:bg-gray-100 text-sm"
+                onClick={handleSendChart}
+              >
+                <img src={chartIcon} alt="Chart" className="w-5 h-5" /> Chart
+              </button>
+            </div>
+          )}
+        </div>
 
         <textarea
           value={text}
@@ -238,13 +273,9 @@ const ChatWindow = ({ type, target, allContacts }) => {
 
       {/* Preview Modal */}
       {previewFile && (
-        <div className="fixed inset-0 bg-opacity-70 flex items-center justify-center z-50">
+        <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50">
           <div className="bg-white rounded-xl p-4 max-w-md w-full flex flex-col gap-3">
-            <img
-              src={previewURL}
-              alt="preview"
-              className="max-h-[300px] object-contain rounded"
-            />
+            <img src={previewURL} alt="preview" className="max-h-[300px] object-contain rounded" />
             <textarea
               value={previewCaption}
               onChange={(e) => setPreviewCaption(e.target.value)}
